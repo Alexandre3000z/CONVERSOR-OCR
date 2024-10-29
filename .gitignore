@@ -4,3 +4,4 @@ dist/
 output/
 tesseract-setup.exe
 index.spec
+poppler/
