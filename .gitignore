@@ -3,3 +3,4 @@ build/
 dist/
 output/
 tesseract-setup.exe
+index.spec
