@@ -1,5 +1,6 @@
 import sys
-import webbrowser
+import logging
+import os
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QHBoxLayout, QFileDialog, QSpacerItem, QSizePolicy, QGroupBox, QProgressBar
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
@@ -7,6 +8,14 @@ from pdf2image import convert_from_path
 import pytesseract
 from PyPDF2 import PdfWriter, PdfReader
 from io import BytesIO
+
+# Configuração de logging
+log_path = os.path.join(os.path.expanduser('~'), 'app.log')
+logging.basicConfig(level=logging.DEBUG, filename=log_path, filemode='w',
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Configure o caminho do Tesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 class ConversionThread(QThread):
     progress = pyqtSignal(int)
@@ -19,46 +28,60 @@ class ConversionThread(QThread):
         self.operation = operation
 
     def run(self):
-        if self.operation == "text":
-            self.convert_pdf_to_text(self.input_pdf, self.output_file)
-        elif self.operation == "searchable_pdf":
-            self.convert_pdf_to_searchable(self.input_pdf, self.output_file)
-        self.finished.emit(self.output_file)
+        try:
+            logging.info(f"Iniciando conversão: {self.operation}")
+            if self.operation == "text":
+                self.convert_pdf_to_text(self.input_pdf, self.output_file)
+            elif self.operation == "searchable_pdf":
+                self.convert_pdf_to_searchable(self.input_pdf, self.output_file)
+            self.finished.emit(self.output_file)
+        except Exception as e:
+            logging.error(f"Erro durante a conversão: {e}")
 
     def convert_pdf_to_searchable(self, input_pdf, output_pdf):
-        images = convert_from_path(input_pdf, dpi=300)
-        pdf_writer = PdfWriter()
+        try:
+            logging.info(f"Convertendo PDF para PDF selecionável: {input_pdf}")
+            images = convert_from_path(input_pdf, dpi=300)
+            pdf_writer = PdfWriter()
 
-        total_pages = len(images)
-        for i, image in enumerate(images):
-            gray_image = image.convert('L')
-            enhanced_image = gray_image.point(lambda x: 0 if x < 140 else 255, '1')
-            custom_config = r'--oem 3 --psm 6'
-            pdf_bytes = pytesseract.image_to_pdf_or_hocr(enhanced_image, extension='pdf', config=custom_config)
-            pdf_page = PdfReader(BytesIO(pdf_bytes)).pages[0]
-            pdf_writer.add_page(pdf_page)
-
-            # Emit progress
-            progress = int((i + 1) / total_pages * 100)
-            self.progress.emit(progress)
-            self.msleep(50)  # Pequena pausa para permitir a atualização da GUI
-
-        with open(output_pdf, 'wb') as f:
-            pdf_writer.write(f)
-
-    def convert_pdf_to_text(self, input_pdf, output_txt):
-        images = convert_from_path(input_pdf, dpi=300)
-
-        total_pages = len(images)
-        with open(output_txt, 'w', encoding='utf-8') as txt_file:
+            total_pages = len(images)
             for i, image in enumerate(images):
-                text = pytesseract.image_to_string(image, lang='por')
-                txt_file.write(text + '\n')
+                gray_image = image.convert('L')
+                enhanced_image = gray_image.point(lambda x: 0 if x < 140 else 255, '1')
+                custom_config = r'--oem 3 --psm 6'
+                pdf_bytes = pytesseract.image_to_pdf_or_hocr(enhanced_image, extension='pdf', config=custom_config)
+                pdf_page = PdfReader(BytesIO(pdf_bytes)).pages[0]
+                pdf_writer.add_page(pdf_page)
 
                 # Emit progress
                 progress = int((i + 1) / total_pages * 100)
                 self.progress.emit(progress)
                 self.msleep(50)  # Pequena pausa para permitir a atualização da GUI
+
+            with open(output_pdf, 'wb') as f:
+                pdf_writer.write(f)
+            logging.info(f"Conversão para PDF selecionável concluída: {output_pdf}")
+        except Exception as e:
+            logging.error(f"Erro durante a conversão para PDF selecionável: {e}")
+
+    def convert_pdf_to_text(self, input_pdf, output_txt):
+        try:
+            logging.info(f"Convertendo PDF para texto: {input_pdf}")
+            images = convert_from_path(input_pdf, dpi=300)
+
+            total_pages = len(images)
+            with open(output_txt, 'w', encoding='utf-8') as txt_file:
+                for i, image in enumerate(images):
+                    text = pytesseract.image_to_string(image, lang='por')
+                    txt_file.write(text + '\n')
+
+                    # Emit progress
+                    progress = int((i + 1) / total_pages * 100)
+                    self.progress.emit(progress)
+                    self.msleep(50)  # Pequena pausa para permitir a atualização da GUI
+            logging.info(f"Conversão para texto concluída: {output_txt}")
+        except Exception as e:
+            logging.error(f"Erro durante a conversão para texto: {e}")
 
 class PDFConverterApp(QWidget):
     def __init__(self):
@@ -69,14 +92,17 @@ class PDFConverterApp(QWidget):
         self.setWindowTitle('OFFICE OCR')
         self.setGeometry(100, 100, 800, 600)
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint)
-        self.setContentsMargins(10, 10, 10, 0)  # Margem esquerda, superior, direita, inferior
+        self.setContentsMargins(10, 10, 10, 0)
+
         # Defina o ícone da janela
         self.setWindowIcon(QIcon('./office.ico'))
+
         # Layout principal
         layout = QVBoxLayout()
         
         # Espaçador
         layout.addItem(QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
         # Título
         title = QLabel('Office OCR')
         title.setFont(QFont('Italic', 45, QFont.Bold))
@@ -127,7 +153,7 @@ class PDFConverterApp(QWidget):
         # Barra de progresso
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(False)  # Inicialmente invisível
+        self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
         # Botão de conversão
@@ -152,11 +178,14 @@ class PDFConverterApp(QWidget):
         self.setLayout(layout)
     
     def open_file_dialog(self):
-        options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Selecione um Documento PDF", "", "PDF Files (*.pdf);;Todos os Arquivos (*)", options=options)
-        if file_path:
-            self.search_bar.setText(file_path)
-            print(f"Arquivo selecionado: {file_path}")
+        try:
+            options = QFileDialog.Options()
+            file_path, _ = QFileDialog.getOpenFileName(self, "Selecione um Documento PDF", "", "PDF Files (*.pdf);;Todos os Arquivos (*)", options=options)
+            if file_path:
+                self.search_bar.setText(file_path)
+                logging.info(f"Arquivo selecionado: {file_path}")
+        except Exception as e:
+            logging.error(f"Erro ao selecionar arquivo: {e}")
 
     def select_text_conversion(self):
         self.text_button.setChecked(True)
@@ -167,26 +196,32 @@ class PDFConverterApp(QWidget):
         self.text_button.setChecked(False)
 
     def perform_conversion(self):
-        input_pdf = self.search_bar.text()
-        if input_pdf:
-            # Desabilitar widgets durante a conversão
-            self.set_widgets_enabled(False)
-            self.progress_bar.setVisible(True)  # Torna a barra de progresso visível
-            self.progress_bar.setValue(0)  # Reseta a barra de progresso
-            if self.text_button.isChecked():
-                output_txt, _ = QFileDialog.getSaveFileName(self, "Salvar Texto Como", "", "Text Files (*.txt);;Todos os Arquivos (*)")
-                if output_txt:
-                    self.thread = ConversionThread(input_pdf, output_txt, "text")
-                    self.thread.progress.connect(self.progress_bar.setValue)
-                    self.thread.finished.connect(self.on_conversion_finished)
-                    self.thread.start()
-            elif self.pdf_button.isChecked():
-                output_pdf, _ = QFileDialog.getSaveFileName(self, "Salvar PDF Como", "", "PDF Files (*.pdf);;Todos os Arquivos (*)")
-                if output_pdf:
-                    self.thread = ConversionThread(input_pdf, output_pdf, "searchable_pdf")
-                    self.thread.progress.connect(self.progress_bar.setValue)
-                    self.thread.finished.connect(self.on_conversion_finished)
-                    self.thread.start()
+        try:
+            input_pdf = self.search_bar.text()
+            if input_pdf:
+                logging.info(f"Iniciando conversão para: {input_pdf}")
+                # Desabilitar widgets durante a conversão
+                self.set_widgets_enabled(False)
+                self.progress_bar.setVisible(True)
+                self.progress_bar.setValue(0)
+                if self.text_button.isChecked():
+                    output_txt, _ = QFileDialog.getSaveFileName(self, "Salvar Texto Como", "", "Text Files (*.txt);;Todos os Arquivos (*)")
+                    if output_txt:
+                        logging.info(f"Arquivo de saída para texto: {output_txt}")
+                        self.thread = ConversionThread(input_pdf, output_txt, "text")
+                        self.thread.progress.connect(self.progress_bar.setValue)
+                        self.thread.finished.connect(self.on_conversion_finished)
+                        self.thread.start()
+                elif self.pdf_button.isChecked():
+                    output_pdf, _ = QFileDialog.getSaveFileName(self, "Salvar PDF Como", "", "PDF Files (*.pdf);;Todos os Arquivos (*)")
+                    if output_pdf:
+                        logging.info(f"Arquivo de saída para PDF: {output_pdf}")
+                        self.thread = ConversionThread(input_pdf, output_pdf, "searchable_pdf")
+                        self.thread.progress.connect(self.progress_bar.setValue)
+                        self.thread.finished.connect(self.on_conversion_finished)
+                        self.thread.start()
+        except Exception as e:
+            logging.error(f"Erro durante a conversão: {e}")
 
     def set_widgets_enabled(self, enabled):
         self.search_bar.setEnabled(enabled)
@@ -195,9 +230,9 @@ class PDFConverterApp(QWidget):
         self.convert_button.setEnabled(enabled)
 
     def on_conversion_finished(self, output_file):
-        self.progress_bar.setVisible(False)  # Oculta a barra de progresso após a conclusão
-        self.set_widgets_enabled(True)  # Reabilita os widgets
-        print(f"Conversão concluída: {output_file}")
+        self.progress_bar.setVisible(False)
+        self.set_widgets_enabled(True)
+        logging.info(f"Conversão concluída: {output_file}")
 
 def main():
     app = QApplication(sys.argv)

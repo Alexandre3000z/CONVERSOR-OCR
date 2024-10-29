@@ -1,0 +1,5 @@
+# Ignorar diretórios de build e distribuição
+build/
+dist/
+output/
+tesseract-setup.exe
